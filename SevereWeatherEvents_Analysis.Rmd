@@ -1,5 +1,5 @@
 ---
-title: "SevereWeatherEvents_Analysis"
+title: "Severe Weather Events Analysis"
 author: "José María Sebastián Carrillo"
 date: "22 de febrero de 2018"
 output: html_document
@@ -39,6 +39,10 @@ First of all, we need to check the libraries present in the system:
 if (!require('plyr')) {
     stop('The package plyr was not installed!')
 }
+
+if (!require('dplyr')) {
+    stop('The package dplyr was not installed!')
+}
 ```
 
 
@@ -59,8 +63,175 @@ if (!file.exists(dataFileCompressed)){
 
 ### Loading the data
 
-Extract the data from the compressed file and store it in a variable.
+Extract the data from the compressed file and store it in a variable, but only the columns that would apply to our analysis, in this case:
+
+* STATE: State events took place
+* EVTYPE: Event Type (e.g. tornado, flood, etc.)
+* FATALITIES: Number of fatalities
+* INJURIES: Number of injuries
+* PROPDMG: Property damage estimates, entered as actual dollar amounts
+* PROPDMGEXP: Alphabetic Codes to signify magnitude “K” for thousands, “M” for millions, and “B” for billions)
+* CROPDMG: Crop damage estimates, entered as actual dollar amounts
+* CROPDMGEXP: Alphabetic Codes to signify magnitude “K” for thousands, “M” for millions, and “B” for billions)
 ```{r cache = TRUE}
 rawData <- read.csv(bzfile(dataFileCompressed))
-str(rawData)
+workDataset <- rawData[,c("STATE", "EVTYPE", "FATALITIES", "INJURIES", "PROPDMG","PROPDMGEXP","CROPDMG","CROPDMGEXP")]
+str(workDataset)
 ```
+
+### Transform the data
+
+In this moment we can analyze the distinct types of event fatalities that we have in the dataset.
+```{r}
+# Show only a few for visualizatie more easily first time (document too long).
+head(unique(workDataset$EVTYPE), n = 20L)
+# If you want to show all the values, use the next instruction instead the above
+# unique(workDataset$EVTYPE)
+```
+
+Now, we can aggregate the events types.
+```{r cache = TRUE}
+# Transforms (force) the data into text
+workDataset$EVTYPE<-as.character(workDataset$EVTYPE)
+# Change the literals
+workDataset[grep("DROUGHT", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Drought"
+workDataset[grep("HAIL", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Hail"
+workDataset[grep("FOG", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Fog"
+workDataset[grep("AVALANC", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Avalanche"
+workDataset[grep("LIG", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Lightning"
+workDataset[grep("FIRE", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Wild Fire"
+workDataset[grep("WARM|HEAT", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Heat"
+workDataset[grep("SLUMP|SLIDE", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Landslide"
+workDataset[grep("FUNNEL|DUST DEVIL|WHIRLWIND|LANDSPOUT|WATERSPOUT|TORN|NADO",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Tornado"
+workDataset[grep("HURRICANE|TYPHOON|TROP",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Hurricane/Typhoon"
+workDataset[grep("BEACH|SWELL|SEICHE|TSUNAMI|SEA|COAST|RIP|WAVE|SUR|TID",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Coastal Event"
+workDataset[grep("URBAN|STREAM|FLOOD",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Flash Flood"
+workDataset[grep("HYPOTHERMIA|SLEET|GLAZE|LOW TEMPERATURE|FREEZ|FROST|SNOW|BLIZZARD|WINT|ICE|ICY|COLD",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Winter Event"
+workDataset[grep("DAM|WET|MIX|PRECIPITATION|WATER|RAIN|SHOWER",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Rain"
+workDataset[grep("DUST|WIND|BURST|HIGH|TSTM|THUN|APACHE COUNTY",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Thunderstorm/Wind"
+workDataset[grep("OTHER|MARINE|SMOKE|VOLCANIC|TURBULENCE|DROWNING|\\?",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Other"
+# Convert to factor
+workDataset$EVTYPE<-factor(workDataset$EVTYPE)
+# Show the changes
+summary(workDataset$EVTYPE)
+```
+
+The next thing we should do is convert the numeric data codes (PROPDMGEXP and CROPDMGEXP), that multiplies the normal numeric values (PROPDMG and CROPDMG), to a normalized value in dollars.
+For this, we need to know wich are the values
+```{r}
+table(workDataset$CROPDMGEXP)
+table(workDataset$PROPDMGEXP)
+```
+
+Now we can construct a function that will make the "decode" this values to a numeric ones (in desc. order of appearances).
+```{r}
+decodeExponent <- function(value) {
+    if (value == "") return(0)
+    else if (value %in% c("k", "K"))
+        return(3)
+    else if (value %in% c("m", "M"))
+        return(6)
+    else if (!is.na(as.numeric(value))) 
+        return(as.numeric(value))
+    else if (value %in% c("b", "B"))
+        return(9)
+    else if (value %in% c("h", "H"))
+        return(2)
+    else if (value %in% c("-", "?", "+"))
+        return(0)
+    else return(0)
+}
+```
+
+So we can use no the previous function to transform the data.
+```{r cache = TRUE}
+# Property damages
+propExponent <- sapply(workDataset$PROPDMGEXP, FUN=decodeExponent)
+workDataset$Property_Damage <- workDataset$PROPDMG * (10 ** propExponent)
+# Crop damages
+cropExponent <- sapply(workDataset$CROPDMGEXP, FUN=decodeExponent)
+workDataset$Crop_Damage <- workDataset$CROPDMG * (10 ** cropExponent)
+# Total damages
+workDataset$Total_Damage <- workDataset$Property_Damage + workDataset$Crop_Damage
+```
+
+We start to construct the final dataset, contains the information that we'll show after, renaming the column names for more clear analysis.
+```{r cache = TRUE}
+weatherEvents <- workDataset[,c("STATE", "EVTYPE", "FATALITIES", "INJURIES",
+                                "Property_Damage","Crop_Damage", "Total_Damage")]
+names(weatherEvents)[names(weatherEvents) == 'STATE'] <- 'State'
+names(weatherEvents)[names(weatherEvents) == 'EVTYPE'] <- 'Event_Type'
+names(weatherEvents)[names(weatherEvents) == 'FATALITIES'] <- 'Fatalities'
+names(weatherEvents)[names(weatherEvents) == 'INJURIES'] <- 'Injuries'
+str(weatherEvents)
+```
+
+### Working with the data
+
+Using this dataset, we can aggregate the data by the target columns, making the final datasets used for represntation.
+
+First we summarize the health damages, sorting in descendant order, and removing the values that have not impact.
+```{r cache = TRUE}
+# Health fatalities
+healthFatalities <- ddply(weatherEvents, .(Event_Type), summarize,
+                          Fatalities = sum(Fatalities))
+# Remove data with no impact
+healthFatalities <- healthFatalities[(healthFatalities$Fatalities > 0), ]
+# Order the final data
+healthFatalitiesOrdered <- healthFatalities[order(healthFatalities$Fatalities,
+                                                  decreasing = TRUE), ]
+# Let's see the data
+str(healthFatalitiesOrdered)
+head(healthFatalitiesOrdered)
+
+# Health injuries
+healthInjuries <- ddply(weatherEvents, .(Event_Type), summarize,
+                        Injuries = sum(Injuries))
+# Remove data with no impact
+healthInjuries <- healthInjuries[(healthInjuries$Injuries > 0), ]
+# Order the final data
+healthInjuriesOrdered <- healthInjuries[order(healthInjuries$Injuries,
+                                              decreasing = TRUE), ]
+# Let's see the data
+str(healthInjuriesOrdered)
+head(healthInjuriesOrdered)
+```
+
+And then, we summarize the property and crop damages, sorting in descendant order, and removing the values that have not impact.
+```{r cache = TRUE}
+# Property damages
+propertyDamage <- ddply(weatherEvents, .(Event_Type), summarize,
+                        Property_Damage = sum(Property_Damage))
+# Remove data with no impact
+propertyDamage <- propertyDamage[(propertyDamage$Property_Damage > 0), ]
+# Order the final data
+propertyDamageOrdered <- propertyDamage[order(propertyDamage$Property_Damage,
+                                              decreasing = TRUE), ]
+# Let's see the data
+str(propertyDamageOrdered)
+head(propertyDamageOrdered)
+
+# Crop damages
+cropDamage <- ddply(weatherEvents, .(Event_Type), summarize,
+                    Crop_Damage = sum(Crop_Damage))
+# Remove data with no impact
+cropDamage <- cropDamage[(cropDamage$Crop_Damage > 0), ]
+# Order the final data
+cropDamageOrdered <- cropDamage[order(cropDamage$Crop_Damage,
+                                              decreasing = TRUE), ]
+# Let's see the data
+str(cropDamageOrdered)
+head(cropDamageOrdered)
+```
+
+
+## Results
+
