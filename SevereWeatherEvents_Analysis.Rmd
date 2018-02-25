@@ -43,6 +43,14 @@ if (!require('plyr')) {
 if (!require('dplyr')) {
     stop('The package dplyr was not installed!')
 }
+
+if (!require('ggplot2')) {
+  stop('The package ggplot2 was not installed!')
+}
+
+if (!require('gridExtra')) {
+  stop('The package gridExtra was not installed!')
+}
 ```
 
 
@@ -95,6 +103,8 @@ Now, we can aggregate the events types.
 workDataset$EVTYPE<-as.character(workDataset$EVTYPE)
 # Change the literals
 workDataset[grep("DROUGHT", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Drought"
+workDataset[grep("URBAN|STREAM|FLOOD",
+                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Flood"
 workDataset[grep("HAIL", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Hail"
 workDataset[grep("FOG", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Fog"
 workDataset[grep("AVALANC", workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Avalanche"
@@ -108,8 +118,6 @@ workDataset[grep("HURRICANE|TYPHOON|TROP",
                  workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Hurricane/Typhoon"
 workDataset[grep("BEACH|SWELL|SEICHE|TSUNAMI|SEA|COAST|RIP|WAVE|SUR|TID",
                  workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Coastal Event"
-workDataset[grep("URBAN|STREAM|FLOOD",
-                 workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Flash Flood"
 workDataset[grep("HYPOTHERMIA|SLEET|GLAZE|LOW TEMPERATURE|FREEZ|FROST|SNOW|BLIZZARD|WINT|ICE|ICY|COLD",
                  workDataset$EVTYPE,ignore.case = T),"EVTYPE"] <-"Winter Event"
 workDataset[grep("DAM|WET|MIX|PRECIPITATION|WATER|RAIN|SHOWER",
@@ -235,3 +243,50 @@ head(cropDamageOrdered)
 
 ## Results
 
+Now we can make the first plot, that shows the influence in health of the top ten weather events.
+```{r}
+pHealthInjuries <- ggplot(data = head(healthInjuriesOrdered,10),
+                          aes(x=reorder(Event_Type, Injuries), y=Injuries)) +
+    geom_bar(stat="identity", fill="steelblue") +
+    geom_text(aes(label = Injuries), hjust = -0.1, size = 3) +
+    scale_y_continuous(limits=c(0, max(healthInjuriesOrdered$Injuries) * 1.05)) +
+    coord_flip() +
+    xlab("Event type") + ylab("Total number of injuries") +
+    ggtitle("Top 10 weather events in the US - Health impact")
+
+pHealthFatalities <- ggplot(data = head(healthFatalitiesOrdered,10),
+                            aes(x=reorder(Event_Type, Fatalities), y=Fatalities)) +
+    geom_bar(stat="identity", fill="olivedrab") +
+    geom_text(aes(label = Fatalities), hjust = -0.1, size = 3) +
+    scale_y_continuous(limits=c(0, max(healthFatalitiesOrdered$Fatalities) * 1.05)) +
+    coord_flip() +
+    xlab("Event type") + ylab("Total number of fatalities")
+
+grid.arrange(pHealthInjuries, pHealthFatalities, nrow =2)
+
+```
+
+And the influence in the economics.
+```{r}
+pHealthInjuries <- ggplot(data = head(propertyDamageOrdered,10),
+                          aes(x=reorder(Event_Type, Property_Damage),
+                              y=round(Property_Damage/10**12,2))) +
+    geom_bar(stat="identity", fill="steelblue") +
+    geom_text(aes(label = round(Property_Damage/10**12,2)), hjust = -0.1, size = 3) +
+    scale_y_continuous(limits=c(0, max(propertyDamageOrdered$Property_Damage/10**12) * 1.1)) +
+    coord_flip() +
+    xlab("Event type") + ylab("Property damage in trillion $ [10^12]") +
+    ggtitle("Top 10 weather events in the US - Economic impact")
+
+pHealthFatalities <- ggplot(data = head(cropDamageOrdered,10),
+                            aes(x=reorder(Event_Type, Crop_Damage),
+                                y=round(Crop_Damage/10**6,2))) +
+    geom_bar(stat="identity", fill="olivedrab") +
+    geom_text(aes(label = round(Crop_Damage/10**6,2)), hjust = -0.1, size = 3) +
+    scale_y_continuous(limits=c(0, max(cropDamageOrdered$Crop_Damage/10**6) * 1.1)) +
+    coord_flip() +
+    xlab("Event type") + ylab("Crop damage in million $ [10^6]")
+
+grid.arrange(pHealthInjuries, pHealthFatalities, nrow =2)
+
+```
