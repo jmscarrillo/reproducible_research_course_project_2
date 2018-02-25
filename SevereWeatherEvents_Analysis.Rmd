@@ -3,10 +3,13 @@ title: "Severe Weather Events Analysis"
 author: "José María Sebastián Carrillo"
 date: "22 de febrero de 2018"
 output:
-  html_document:
-    keep_md: yes
+  pdf_document:
+    toc: true
+    number_sections: true
   md_document:
     variant: markdown_github
+  html_document:
+    keep_md: yes
 ---
 
 ```{r setup, include=FALSE}

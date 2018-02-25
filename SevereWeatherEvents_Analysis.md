@@ -7,6 +7,9 @@ output:
     keep_md: yes
   md_document:
     variant: markdown_github
+  pdf_document:
+    toc: true
+    number_sections: true
 ---
 
 
